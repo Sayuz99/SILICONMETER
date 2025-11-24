@@ -14,9 +14,9 @@
     <!-- Load Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- CRITICAL FIX: Switched Recharts CDN to cdnjs for reliability to avoid MIME-Type conflict -->
-    <!-- You MUST hard refresh (Ctrl+Shift+R or Cmd+Shift+R) to load this new script -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.0/recharts.umd.min.js"></script> 
+    <!-- CRITICAL FIX: Switched Recharts CDN to JSDELIVR to force cache invalidation -->
+    <!-- After this update, YOU MUST PERFORM A HARD REFRESH (Ctrl/Cmd + Shift + R) -->
+    <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.0/umd/Recharts.min.js"></script> 
 
     <style>
         /* Define custom styles for the dark theme and global font */
@@ -54,7 +54,7 @@
             document.getElementById('root').innerHTML = `
               <div style="min-height: 100vh; background-color: #0a0a0a; color: #f87171; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center;">
                   <h2>Chart Library Failed to Load!</h2>
-                  <p>Check the console for a MIME-type conflict error. Please perform a hard refresh (Ctrl/Cmd + Shift + R).</p>
+                  <p>A Hard Refresh (Ctrl/Cmd + Shift + R) is required after the dependency link update.</p>
               </div>
             `;
             // Exit script execution if Recharts isn't available
