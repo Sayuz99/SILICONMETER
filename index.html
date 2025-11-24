@@ -13,8 +13,9 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Load Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Load Recharts (Chart Library) -->
-    <script src="https://unpkg.com/recharts@2.12.0/umd/Recharts.min.js"></script>
+    
+    <!-- FIX: Switched Recharts CDN to jsdelivr to avoid MIME-Type conflict -->
+    <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.0/umd/Recharts.min.js"></script> 
 
     <style>
         /* Define custom styles for the dark theme and global font */
@@ -42,6 +43,7 @@
     <!-- The React application code in JSX/Babel format -->
     <script type="text/babel">
         const { useState, useEffect, useMemo, useCallback, Fragment } = React;
+        // Recharts is now successfully destructured here because the script loaded
         const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, ResponsiveContainer, AreaChart, Area } = Recharts;
         // Map Lucide icons loaded via CDN to variables for use in JSX
         const { ArrowUpRight, ArrowDownRight, TrendingUp, Cpu, Zap, AlertTriangle, ExternalLink, Loader2, WifiOff } = lucide;
@@ -166,7 +168,7 @@
           const [liveData, setLiveData] = useState(null);
           const [loading, setLoading] = useState(true);
           const [filter, setFilter] = useState('ALL');
-          const [error, setError] = useState(null); // NEW: State for error messages
+          const [error, setError] = useState(null); // State for error messages
           
           // 1. DATA FETCHING EFFECT
           const fetchData = useCallback(async () => {
@@ -236,9 +238,11 @@
             );
           }
 
-          // State 2: Error (if data fetching failed)
+          // State 2: Error (if data fetching failed or data is empty)
           if (error || (products.length === 0 && !loading)) {
-            const displayMessage = error || "The data file (data.json) is empty or corrupted. Please check the file contents.";
+            const isDataEmpty = products.length === 0 && !loading;
+            const displayMessage = error || "The data file (data.json) is loaded, but it appears to be empty or corrupted.";
+            
             return (
               <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-8">
                   <div className="bg-red-900/50 border border-red-700/50 rounded-xl p-8 max-w-lg w-full text-center shadow-2xl">
@@ -246,7 +250,7 @@
                     <h2 className="text-xl font-bold text-white mb-2">CRITICAL DATA FETCH ERROR</h2>
                     <p className="text-red-200 text-sm mb-4">{displayMessage}</p>
                     <p className="text-red-300 text-xs font-mono bg-red-900 px-3 py-2 rounded">
-                      Ensure `data.json` is committed to the root of your `main` branch.
+                      Ensure `data.json` is committed to the root of your `main` branch and contains valid product data.
                     </p>
                     <button 
                       onClick={fetchData} 
