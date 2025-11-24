@@ -1,1 +1,104 @@
-{"last_updated":"2025-11-24T12:00:00","products":[{"id":"dram-001","name":"Corsair Vengeance 32GB DDR5","type":"DDR5","url":"https://amazon.com/example-product-link","selector":"#corePriceDisplay_desktop_feature_div .a-price-whole","current_price":145.00,"change_24h":0.0,"sentiment":"hold","stock_status":"In Stock","history":[{"date":"2025-11-20","price":135.00},{"date":"2025-11-21","price":138.50},{"date":"2025-11-22","price":140.00},{"date":"2025-11-23","price":142.50},{"date":"2025-11-24","price":145.00}]},{"id":"gpu-001","name":"NVIDIA RTX 4090 Founder's Edition","type":"GPU","url":"https://bestbuy.com/example-gpu","selector":".priceView-hero-price span","current_price":1800.00,"change_24h":0.0,"sentiment":"buy","stock_status":"Low Stock","history":[{"date":"2025-11-20","price":1850.00},{"date":"2025-11-21","price":1840.00},{"date":"2025-11-22","price":1820.00},{"date":"2025-11-23","price":1810.00},{"date":"2025-11-24","price":1800.00}]},{"id":"dram-002","name":"G.Skill Trident Z5 64GB","type":"DDR5","url":"https://newegg.com/example-ram","selector":".price-current strong","current_price":210.00,"change_24h":0.0,"sentiment":"panic","stock_status":"Out of Stock","history":[{"date":"2025-11-20","price":190.00},{"date":"2025-11-21","price":195.00},{"date":"2025-11-22","price":200.00},{"date":"2025-11-23","price":205.00},{"date":"2025-11-24","price":210.00}]}]}
+{
+  "last_updated": "2025-11-24T22:02:54.472789",
+  "products": [
+    {
+      "id": "dram-001",
+      "name": "Corsair Vengeance 32GB DDR5",
+      "type": "DDR5",
+      "url": "https://amazon.com/example-product-link",
+      "selector": "#corePriceDisplay_desktop_feature_div .a-price-whole",
+      "current_price": 139.64,
+      "change_24h": -3.7,
+      "sentiment": "hold",
+      "stock_status": "In Stock",
+      "history": [
+        {
+          "date": "2025-11-20",
+          "price": 135.0
+        },
+        {
+          "date": "2025-11-21",
+          "price": 138.5
+        },
+        {
+          "date": "2025-11-22",
+          "price": 140.0
+        },
+        {
+          "date": "2025-11-23",
+          "price": 142.5
+        },
+        {
+          "date": "2025-11-24",
+          "price": 139.64
+        }
+      ]
+    },
+    {
+      "id": "gpu-001",
+      "name": "NVIDIA RTX 4090 Founder's Edition",
+      "type": "GPU",
+      "url": "https://bestbuy.com/example-gpu",
+      "selector": ".priceView-hero-price span",
+      "current_price": 1720.02,
+      "change_24h": -4.44,
+      "sentiment": "buy",
+      "stock_status": "Low Stock",
+      "history": [
+        {
+          "date": "2025-11-20",
+          "price": 1850.0
+        },
+        {
+          "date": "2025-11-21",
+          "price": 1840.0
+        },
+        {
+          "date": "2025-11-22",
+          "price": 1820.0
+        },
+        {
+          "date": "2025-11-23",
+          "price": 1810.0
+        },
+        {
+          "date": "2025-11-24",
+          "price": 1720.02
+        }
+      ]
+    },
+    {
+      "id": "dram-002",
+      "name": "G.Skill Trident Z5 64GB",
+      "type": "DDR5",
+      "url": "https://newegg.com/example-ram",
+      "selector": ".price-current strong",
+      "current_price": 207.27,
+      "change_24h": -1.3,
+      "sentiment": "hold",
+      "stock_status": "Out of Stock",
+      "history": [
+        {
+          "date": "2025-11-20",
+          "price": 190.0
+        },
+        {
+          "date": "2025-11-21",
+          "price": 195.0
+        },
+        {
+          "date": "2025-11-22",
+          "price": 200.0
+        },
+        {
+          "date": "2025-11-23",
+          "price": 205.0
+        },
+        {
+          "date": "2025-11-24",
+          "price": 207.27
+        }
+      ]
+    }
+  ]
+}
