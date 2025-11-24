@@ -3,10 +3,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsToolti
 import { ArrowUpRight, ArrowDownRight, TrendingUp, Cpu, Zap, AlertTriangle, Search, Filter, ExternalLink, Newspaper, Loader2 } from 'lucide-react';
 
 // --- CONFIGURATION ---
-// IMPORTANT: Replace this placeholder with your actual GitHub Pages URL to data.json
-// Example: https://<your-username>.github.io/<your-repo-name>/data.json
-const GITHUB_DATA_URL = 'https://PLACEHOLDER-FOR-YOUR-REPO.github.io/siliconmeter/data.json';
-// You should update this to your specific URL once you set up GitHub Pages.
+// Data URL updated to your specific GitHub Pages endpoint.
+const GITHUB_DATA_URL = 'https://sayuz99.github.io/SILICONMETER/data.json';
 
 // --- UTILITIES & MOCK DATA (to be removed once fully connected) ---
 
