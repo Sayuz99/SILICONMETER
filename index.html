@@ -44,7 +44,7 @@
         const { useState, useEffect, useMemo, useCallback, Fragment } = React;
         const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, ResponsiveContainer, AreaChart, Area } = Recharts;
         // Map Lucide icons loaded via CDN to variables for use in JSX
-        const { ArrowUpRight, ArrowDownRight, TrendingUp, Cpu, Zap, AlertTriangle, ExternalLink, Loader2 } = lucide;
+        const { ArrowUpRight, ArrowDownRight, TrendingUp, Cpu, Zap, AlertTriangle, ExternalLink, Loader2, WifiOff } = lucide;
 
 
         // --- CONFIGURATION ---
@@ -166,21 +166,25 @@
           const [liveData, setLiveData] = useState(null);
           const [loading, setLoading] = useState(true);
           const [filter, setFilter] = useState('ALL');
+          const [error, setError] = useState(null); // NEW: State for error messages
           
           // 1. DATA FETCHING EFFECT
           const fetchData = useCallback(async () => {
             try {
               setLoading(true);
+              setError(null); // Clear previous errors
               const response = await fetch(GITHUB_DATA_URL);
               if (!response.ok) {
-                throw new Error(`HTTP status ${response.status}. Check CORS/File path.`);
+                // Throw an error if the HTTP status is not 200 (e.g., 404, 500)
+                throw new Error(`HTTP Error: ${response.status} - Could not find data.json.`);
               }
               const data = await response.json();
               setLiveData(data);
-            } catch (error) {
-              console.error("Error fetching data:", error);
-              // Crucially, set loading to false even on error to show *something*
-              // (which will be the UI with no data, but no infinite spinner)
+              setError(null); // Ensure error is null on success
+            } catch (e) {
+              console.error("Error fetching data:", e.message);
+              // Store the user-friendly part of the error
+              setError(`Data Load Failed: ${e.message}. Check your console for details.`);
             } finally {
               setLoading(false);
             }
@@ -205,6 +209,9 @@
 
           // 4. Determine latest prices for the Ticker
           const tickerItems = useMemo(() => {
+            if (!products || products.length === 0) return [];
+            
+            // Find the first product of each type to represent the average/sample
             const dram5 = products.find(p => p.type === 'DDR5');
             const dram4 = products.find(p => p.type === 'DDR4'); 
             const gpu = products.find(p => p.type === 'GPU');
@@ -217,7 +224,10 @@
           }, [products]);
 
 
-          if (loading && !liveData) {
+          // --- CONDITIONAL RENDERING ---
+
+          // State 1: Loading
+          if (loading && !liveData && !error) {
             return (
               <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center text-zinc-400">
                 <Loader2 className="animate-spin mr-3" size={24} />
@@ -226,7 +236,31 @@
             );
           }
 
+          // State 2: Error (if data fetching failed)
+          if (error || (products.length === 0 && !loading)) {
+            const displayMessage = error || "The data file (data.json) is empty or corrupted. Please check the file contents.";
+            return (
+              <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-8">
+                  <div className="bg-red-900/50 border border-red-700/50 rounded-xl p-8 max-w-lg w-full text-center shadow-2xl">
+                    <WifiOff size={48} className="text-red-400 mx-auto mb-4" />
+                    <h2 className="text-xl font-bold text-white mb-2">CRITICAL DATA FETCH ERROR</h2>
+                    <p className="text-red-200 text-sm mb-4">{displayMessage}</p>
+                    <p className="text-red-300 text-xs font-mono bg-red-900 px-3 py-2 rounded">
+                      Ensure `data.json` is committed to the root of your `main` branch.
+                    </p>
+                    <button 
+                      onClick={fetchData} 
+                      className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-500 transition"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+              </div>
+            );
+          }
 
+
+          // State 3: Success (Main Dashboard)
           return (
             <div className="min-h-screen bg-[#0a0a0a] text-zinc-200 font-sans selection:bg-indigo-500/30">
               
