@@ -14,8 +14,35 @@
     <!-- Load Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- CRITICAL FIX: Using jsdelivr CDN for Recharts, which should be robust. -->
+    <!-- Load Recharts for charting -->
     <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.0/umd/Recharts.min.js"></script> 
+
+    <!-- Firebase SDK Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Expose Firebase modules globally for the Babel script to use
+        window.firebase = {
+            initializeApp,
+            getAuth,
+            signInAnonymously,
+            signInWithCustomToken,
+            onAuthStateChanged,
+            getFirestore,
+            doc,
+            onSnapshot,
+            collection,
+            query,
+            limit,
+            orderBy,
+            setLogLevel
+        };
+        // Set log level to debug for easier troubleshooting
+        window.firebase.setLogLevel('debug');
+    </script>
 
     <style>
         /* Define custom styles for the dark theme and global font */
@@ -27,500 +54,436 @@
             width: 8px;
         }
         ::-webkit-scrollbar-thumb {
-            background-color: #4b5563; /* Gray-600 */
+            background-color: #4f46e5;
             border-radius: 4px;
         }
         ::-webkit-scrollbar-track {
-            background-color: #1f2937; /* Gray-800 */
-        }
-        /* Ticker Animation CSS */
-        .animate-marquee {
-          animation: marquee 30s linear infinite;
-        }
-        @keyframes marquee {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
+            background-color: #1f2937;
         }
     </style>
 </head>
-<body class="bg-[#0a0a0a]">
+<body class="bg-gray-900 text-white min-h-screen">
+    <div id="root">
+        <!-- React App will be rendered here -->
+    </div>
 
-    <!-- Root container where the React app will be mounted -->
-    <div id="root"></div>
-
-    <!-- The React application code in JSX/Babel format -->
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useCallback, Fragment } = React;
+        // Ensure React is available (loaded via CDN)
+        const { useState, useEffect, useCallback, useMemo } = React;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = Recharts;
 
-        // Check if Recharts is defined before attempting destructuring
-        if (typeof Recharts === 'undefined') {
-            // Render a fallback error UI if the Recharts script failed to load
-            document.getElementById('root').innerHTML = `
-              <div style="min-height: 100vh; background-color: #0a0a0a; color: #f87171; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center;">
-                  <h2>Chart Library Failed to Load!</h2>
-                  <p>The required chart dependency failed to load. A Hard Refresh (Ctrl/Cmd + Shift + R) is likely required after the deployment is successful.</p>
-              </div>
-            `;
-            // Exit script execution if Recharts isn't available
-            throw new Error("Recharts is not defined after load attempt.");
+        // --- GLOBAL SETUP (Must use provided global variables) ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        let firebaseConfig = null;
+        try {
+            firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        } catch (e) {
+            console.error("Failed to parse __firebase_config:", e);
         }
 
+        // Firestore paths
+        const FIRESTORE_COLLECTION_PATH = `/artifacts/${appId}/public/data/products`;
+        const FIRESTORE_DOC_ID = 'siliconmeter_data'; // We'll store all data in a single document for simplicity
 
-        // Destructure Recharts components (this line will throw if the script above failed)
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, ResponsiveContainer, AreaChart, Area } = Recharts;
-        // Map Lucide icons loaded via CDN to variables for use in JSX
-        const { ArrowUpRight, ArrowDownRight, TrendingUp, Cpu, Zap, AlertTriangle, ExternalLink, Loader2, WifiOff } = lucide;
-
-
-        // --- CONFIGURATION ---
-        // Determine the base URL dynamically for robust fetching in all environments
-        const GITHUB_PAGES_BASE_PATH = '/SILICONMETER/'; 
-        const isLocal = window.location.hostname === 'localhost';
+        // Helper components for icons (using Lucide)
+        const LucideIcon = ({ name, className = 'w-5 h-5', ...props }) => {
+            const iconElement = lucide.createIcons()[name];
+            if (!iconElement) return null;
+            return (
+                <div 
+                    dangerouslySetInnerHTML={{ __html: iconElement }} 
+                    className={className} 
+                    {...props} 
+                />
+            );
+        };
         
-        // This URL assumes the data.json is at the root of the repository branch.
-        const DATA_URL = isLocal 
-            ? './data.json'
-            : window.location.origin + GITHUB_PAGES_BASE_PATH + 'data.json';
+        // --- CUSTOM HOOKS ---
+        
+        // 1. Firebase/Auth Hook
+        const useFirebaseAuth = () => {
+            const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
+            const [userId, setUserId] = useState(null);
+            const [isAuthReady, setIsAuthReady] = useState(false);
 
+            useEffect(() => {
+                if (!firebaseConfig || !Object.keys(firebaseConfig).length) {
+                    console.error("Firebase config is missing or invalid.");
+                    setIsAuthReady(true); // Treat as ready but unauthenticated
+                    return;
+                }
 
-        // --- MOCK DATA (Fallback news data) ---
-        const newsItems = [
-          { id: 1, title: "SK Hynix halts DDR4 production lines for HBM3e", source: "TechWire", sentiment: "negative", time: "2h ago" },
-          { id: 2, title: "Samsung Q4 contracts show 20% price hike", source: "SiliconTimes", sentiment: "negative", time: "5h ago" },
-          { id: 3, title: "NVIDIA secures remaining HBM supply for 2026", source: "GPU Daily", sentiment: "neutral", time: "12h ago" },
-          { id: 4, title: "Consumer demand for PCs hits 5-year low", source: "MarketWatch", sentiment: "positive", time: "1d ago" },
-        ];
-
-        // --- COMPONENTS ---
-
-        const TickerItem = ({ symbol, price, change }) => (
-          <div className="flex items-center space-x-2 px-6 border-r border-white/10 text-sm font-mono shrink-0">
-            <span className="font-bold text-white">{symbol}</span>
-            <span className="text-zinc-400">${price.toFixed(2)}</span>
-            <span className={`${change > 0 ? 'text-red-400' : 'text-emerald-400'} flex items-center`}>
-              {change > 0 ? '▲' : '▼'} {Math.abs(change).toFixed(2)}%
-            </span>
-          </div>
-        );
-
-        const Sparkline = ({ data, color }) => {
-          // Use the last 5 days of history for the sparkline
-          const sparklineData = Array.isArray(data) ? data.slice(-5) : [];
-          
-          if (sparklineData.length === 0) {
-              return <div className="h-12 w-24 flex items-center justify-center text-xs text-zinc-500">No History</div>;
-          }
-
-          return (
-            <div className="h-12 w-24">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={sparklineData} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
-                  <Line 
-                    type="monotone" 
-                    dataKey="price"
-                    stroke={color} 
-                    strokeWidth={2} 
-                    dot={false} 
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          );
-        };
-
-        const SentimentBadge = ({ sentiment }) => {
-          const config = {
-            panic: { color: 'bg-red-500/20 text-red-400 border-red-500/30', text: 'PANIC BUY', icon: AlertTriangle },
-            hold: { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', text: 'HOLD', icon: TrendingUp },
-            buy: { color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', text: 'GOOD PRICE', icon: Zap },
-          };
-          const { color, text, icon: Icon } = config[sentiment?.toLowerCase()] || config.hold;
-
-          return (
-            <div className={`flex items-center space-x-1 px-2 py-1 rounded text-xs font-bold border ${color}`}>
-              <Icon size={12} />
-              <span>{text}</span>
-            </div>
-          );
-        };
-
-        // --- DATA TRANSFORMATION ---
-
-        const transformDataForGraph = (products) => {
-          if (!products || products.length === 0) return [];
-
-          const dateMap = new Map();
-
-          products.forEach(product => {
-            if (Array.isArray(product.history)) {
-                product.history.forEach(entry => {
-                  const date = entry.date;
-                  if (!dateMap.has(date)) {
-                    dateMap.set(date, { name: date, ddr5: 0, ddr4: 0, countDDR5: 0, countDDR4: 0, hbm: 0, countHBM: 0 });
-                  }
-                  
-                  const dayData = dateMap.get(date);
-                  const price = entry.price;
-
-                  // Aggregate by type for an average index line
-                  if (product.type.includes('DDR5')) {
-                    dayData.ddr5 += price;
-                    dayData.countDDR5 += 1;
-                  } else if (product.type.includes('DDR4')) {
-                    dayData.ddr4 += price;
-                    dayData.countDDR4 += 1;
-                  } 
-                  // HBM aggregation (using HBM name match, though a dedicated type would be better)
-                  if (product.name.includes('HBM')) {
-                     dayData.hbm += price;
-                     dayData.countHBM += 1;
-                  }
-                });
-            }
-          });
-
-          // Calculate the average price per day per category
-          const graphData = Array.from(dateMap.values())
-            .map(data => ({
-              name: data.name.substring(5), // Shorten date for chart (e.g., 11-25)
-              ddr5: data.countDDR5 > 0 ? parseFloat((data.ddr5 / data.countDDR5).toFixed(2)) : null,
-              ddr4: data.countDDR4 > 0 ? parseFloat((data.ddr4 / data.countDDR4).toFixed(2)) : null,
-              hbm: data.countHBM > 0 ? parseFloat((data.hbm / data.countHBM).toFixed(2)) : null,
-            }))
-            .filter(data => data.ddr5 !== null || data.ddr4 !== null || data.hbm !== null) 
-            .sort((a, b) => new Date(a.name) - new Date(b.name));
-
-          return graphData;
-        };
-
-
-        // --- MAIN APP COMPONENT ---
-
-        const App = () => {
-          const [liveData, setLiveData] = useState(null);
-          const [loading, setLoading] = useState(true);
-          const [filter, setFilter] = useState('ALL');
-          const [error, setError] = useState(null); // State for error messages
-          
-          // 1. DATA FETCHING EFFECT
-          const fetchData = useCallback(async () => {
-            try {
-              setLoading(true);
-              setError(null); // Clear previous errors
-              const response = await fetch(DATA_URL);
-              if (!response.ok) {
-                // Throw an error if the HTTP status is not 200 (e.g., 404, 500)
-                throw new Error(`HTTP Error: ${response.status} - Could not find ${DATA_URL}.`);
-              }
-              const data = await response.json();
-              setLiveData(data);
-              setError(null); // Ensure error is null on success
-            } catch (e) {
-              console.error("Error fetching data:", e.message);
-              // Store the user-friendly part of the error
-              setError(`Data Load Failed: ${e.message}. Ensure data.json is accessible at ${DATA_URL}`);
-            } finally {
-              setLoading(false);
-            }
-          }, []);
-
-          useEffect(() => {
-            fetchData();
-            // Set up polling (e.g., every 5 minutes)
-            const intervalId = setInterval(fetchData, 300000); // 5 minutes
-            return () => clearInterval(intervalId);
-          }, [fetchData]);
-
-          // 2. Computed Data from Live Data
-          const products = liveData?.products || [];
-          const marketData = useMemo(() => transformDataForGraph(products), [products]);
-
-          // 3. Computed Filtered Products
-          const filteredProducts = useMemo(() => {
-            if (filter === 'ALL') return products;
-            return products.filter(p => p.type.toUpperCase() === filter);
-          }, [filter, products]);
-
-          // 4. Determine latest prices for the Ticker
-          const tickerItems = useMemo(() => {
-            if (!products || products.length === 0) return [];
-            
-            // Find the first product of each type to represent the average/sample
-            // In a real app, you'd calculate a true average index price.
-            const dram5 = products.find(p => p.type === 'DDR5');
-            const dram4 = products.find(p => p.type === 'DDR4'); 
-            const gpu = products.find(p => p.type === 'GPU');
-
-            // Use sensible defaults if the specific item is missing
-            return [
-              { symbol: "DDR5 AVG", price: dram5?.current_price || 150.00, change: dram5?.change_24h || 0.00 },
-              { symbol: "DDR4 AVG", price: dram4?.current_price || 75.00, change: dram4?.change_24h || 0.00 },
-              { symbol: "GPU 4090", price: gpu?.current_price || 1999.00, change: gpu?.change_24h || 0.00 },
-            ].filter(Boolean);
-          }, [products]);
-
-
-          // --- CONDITIONAL RENDERING ---
-
-          // State 1: Loading
-          if (loading && !liveData && !error) {
-            return (
-              <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center text-zinc-400">
-                <Loader2 className="animate-spin mr-3" size={24} />
-                Loading latest silicon data...
-              </div>
-            );
-          }
-
-          // State 2: Error (if data fetching failed or data is empty)
-          if (error || (products.length === 0 && !loading)) {
-            const displayMessage = error || "The data file (data.json) appears to be empty or corrupted.";
-            
-            return (
-              <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-8">
-                  <div className="bg-red-900/50 border border-red-700/50 rounded-xl p-8 max-w-lg w-full text-center shadow-2xl">
-                    <WifiOff size={48} className="text-red-400 mx-auto mb-4" />
-                    <h2 className="text-xl font-bold text-white mb-2">CRITICAL DATA FETCH ERROR</h2>
-                    <p className="text-red-200 text-sm mb-4">{displayMessage}</p>
-                    <p className="text-red-300 text-xs font-mono bg-red-900 px-3 py-2 rounded break-all">
-                      Current Data URL: {DATA_URL}
-                    </p>
-                    <button 
-                      onClick={fetchData} 
-                      className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-500 transition"
-                    >
-                      Try Again
-                    </button>
-                  </div>
-              </div>
-            );
-          }
-
-
-          // State 3: Success (Main Dashboard)
-          return (
-            <div className="min-h-screen bg-[#0a0a0a] text-zinc-200 font-sans selection:bg-indigo-500/30">
-              
-              {/* 1. THE TICKER (Sticky Top) */}
-              <div className="sticky top-0 z-50 bg-[#0a0a0a]/80 backdrop-blur-md border-b border-white/10 overflow-hidden whitespace-nowrap h-10 flex items-center">
-                <div className="animate-marquee flex">
-                  {[...Array(2)].map((_, i) => (
-                     <Fragment key={i}>
-                        {tickerItems.map((item, index) => (
-                          <TickerItem key={index} {...item} />
-                        ))}
-                        {/* Adding fixed items if not enough dynamic data */}
-                        <TickerItem symbol="NAND FLASH" price={0.12} change={5.4} />
-                        <TickerItem symbol="TSMC WAFER" price={18000} change={2.1} />
-                     </Fragment>
-                  ))}
-                </div>
-              </div>
-
-              {/* MAIN CONTAINER */}
-              <div className="max-w-7xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-
-                {/* LEFT SIDE: HERO & DATA GRID (Cols 1-8) */}
-                <div className="lg:col-span-8 space-y-8">
-                  
-                  {/* HEADER */}
-                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                    <div>
-                      <h1 className="text-4xl font-black tracking-tighter text-white mb-1">
-                        SILICON<span className="text-indigo-500">METER</span>
-                      </h1>
-                      <p className="text-zinc-400 font-medium">
-                        Real-time tracking of the Global Memory Crisis.
-                        <span className="ml-2 text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30">LIVE</span>
-                      </p>
-                    </div>
-                    <div className="flex space-x-2">
-                       <button className="bg-white text-black px-4 py-2 rounded font-bold text-sm hover:bg-zinc-200 transition">
-                         Subscribe for Alerts
-                       </button>
-                    </div>
-                  </div>
-
-                  {/* THE "GOD GRAPH" */}
-                  <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6 relative overflow-hidden group">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-50"></div>
-                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="font-bold text-lg flex items-center text-white">
-                        <TrendingUp className="mr-2 text-indigo-400" size={20} />
-                        Global DRAM Price Index
-                      </h2>
-                      <div className="flex space-x-4 text-xs font-mono">
-                        <div className="flex items-center"><div className="w-2 h-2 rounded-full bg-indigo-500 mr-2"></div>DDR5</div>
-                        <div className="flex items-center"><div className="w-2 h-2 rounded-full bg-pink-500 mr-2"></div>DDR4</div>
-                        <div className="flex items-center"><div className="w-2 h-2 rounded-full bg-emerald-500 mr-2"></div>HBM</div>
-                      </div>
-                    </div>
+                try {
+                    const app = firebase.initializeApp(firebaseConfig);
+                    const firestore = firebase.getFirestore(app);
+                    const authentication = firebase.getAuth(app);
                     
-                    <div className="h-[300px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={marketData}>
-                          <defs>
-                            <linearGradient id="colorDdr5" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                          <XAxis dataKey="name" stroke="#555" tick={{fontSize: 10}} />
-                          <YAxis stroke="#555" tick={{fontSize: 12}} domain={['auto', 'auto']} />
-                          <RechartsTooltip 
-                            contentStyle={{ backgroundColor: '#000', borderColor: '#333', borderRadius: '8px', color: '#fff' }}
-                            itemStyle={{ fontSize: '12px' }}
-                          />
-                          <Area type="monotone" dataKey="ddr5" name="DDR5 Index" stroke="#6366f1" fillOpacity={1} fill="url(#colorDdr5)" strokeWidth={3} />
-                          <Line type="monotone" dataKey="ddr4" name="DDR4 Index" stroke="#ec4899" fill="none" strokeWidth={2} dot={false} strokeDasharray="5 5" />
-                          <Line type="monotone" dataKey="hbm" name="HBM Index" stroke="#10b981" fill="none" strokeWidth={2} dot={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
+                    setDb(firestore);
+                    setAuth(authentication);
 
-                  {/* PRODUCT GRID */}
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-xl text-white">Market Movers</h3>
-                      <div className="flex bg-zinc-900 rounded-lg p-1 border border-white/10">
-                        {['ALL', 'DDR5', 'DDR4', 'GPU', 'SSD'].map(f => (
-                          <button
-                            key={f}
-                            onClick={() => setFilter(f)}
-                            className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-                              filter === f ? 'bg-zinc-700 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
-                            }`}
-                          >
-                            {f}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    const unsubscribe = firebase.onAuthStateChanged(authentication, async (user) => {
+                        if (user) {
+                            setUserId(user.uid);
+                            setIsAuthReady(true);
+                            console.log("User authenticated. UID:", user.uid);
+                        } else {
+                            // Initial sign-in logic if not already signed in
+                            try {
+                                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                                    await firebase.signInWithCustomToken(authentication, __initial_auth_token);
+                                } else {
+                                    await firebase.signInAnonymously(authentication);
+                                }
+                            } catch (error) {
+                                console.error("Firebase authentication failed:", error);
+                            }
+                        }
+                    });
 
-                    <div className="grid grid-cols-1 gap-4">
-                      {filteredProducts.map((product) => (
-                        <div key={product.id} className="bg-zinc-900/30 border border-white/5 hover:border-white/20 rounded-xl p-4 flex items-center justify-between transition-all hover:bg-zinc-800/30 group">
-                          
-                          <div className="flex items-center space-x-4 w-1/3">
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${product.type === 'GPU' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                              {product.type === 'GPU' ? <Cpu size={20} /> : <Zap size={20} />}
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-white text-sm truncate pr-4">{product.name}</h4>
-                              <div className="flex items-center space-x-2 mt-1">
-                                <span className="text-xs px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400 border border-white/5">{product.type}</span>
-                                <span className={`text-xs font-mono ${product.stock_status === 'Critical' || product.stock_status === 'Low Stock' ? 'text-red-400' : 'text-emerald-400'}`}>
-                                  Stock: {product.stock_status || 'Unknown'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
+                    // Cleanup auth listener on component unmount
+                    return () => unsubscribe();
 
-                          <div className="hidden md:block w-1/4">
-                            <Sparkline 
-                              data={Array.isArray(product.history) ? product.history : []} 
-                              color={product.change_24h > 0 ? '#ef4444' : '#10b981'} 
+                } catch (e) {
+                    console.error("Firebase initialization failed:", e);
+                    setIsAuthReady(true);
+                }
+            }, []);
+
+            return { db, userId, isAuthReady };
+        };
+
+        // 2. Firestore Data Hook
+        const useFirestoreData = (db, isAuthReady) => {
+            const [liveData, setLiveData] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+
+            useEffect(() => {
+                if (!db || !isAuthReady) {
+                    if (isAuthReady) setLoading(false);
+                    return;
+                }
+
+                const docRef = firebase.doc(db, FIRESTORE_COLLECTION_PATH, FIRESTORE_DOC_ID);
+                console.log(`Setting up snapshot listener on: ${FIRESTORE_COLLECTION_PATH}/${FIRESTORE_DOC_ID}`);
+
+                const unsubscribe = firebase.onSnapshot(docRef, 
+                    (docSnapshot) => {
+                        if (docSnapshot.exists()) {
+                            const data = docSnapshot.data();
+                            setLiveData(data);
+                            console.log("Firestore Data Updated:", data);
+                        } else {
+                            // If the document doesn't exist, we use the fallback/mock data
+                            console.warn("Firestore document not found. Using mock data structure.");
+                            setLiveData(MOCK_DATA);
+                        }
+                        setLoading(false);
+                        setError(null);
+                    }, 
+                    (e) => {
+                        console.error("Error fetching Firestore data:", e);
+                        setError("Failed to load data from database.");
+                        setLoading(false);
+                        setLiveData(MOCK_DATA); // Fallback to mock data on error
+                    }
+                );
+
+                // Cleanup listener on component unmount
+                return () => unsubscribe();
+
+            }, [db, isAuthReady]);
+
+            return { liveData, loading, error };
+        };
+        
+        // --- MOCK DATA (Fallback if Firestore connection fails or document doesn't exist) ---
+        // This structure mirrors the data.json file previously provided.
+        const MOCK_DATA = {
+          "last_updated": "2025-11-25T12:26:54.770616",
+          "products": [
+            {
+              "id": "dram-001",
+              "name": "Corsair Vengeance 32GB DDR5",
+              "type": "DDR5",
+              "url": "https://amazon.com/example-product-link",
+              "selector": "#corePriceDisplay_desktop_feature_div .a-price-whole",
+              "current_price": 110.76,
+              "change_24h": -4.76,
+              "sentiment": "buy",
+              "stock_status": "In Stock",
+              "history": [
+                { "date": "2025-11-20", "price": 135.0 },
+                { "date": "2025-11-21", "price": 138.5 },
+                { "date": "2025-11-22", "price": 140.0 },
+                { "date": "2025-11-23", "price": 142.5 },
+                { "date": "2025-11-24", "price": 122.65 },
+                { "date": "2025-11-25", "price": 110.76 }
+              ]
+            },
+            {
+              "id": "gpu-001",
+              "name": "NVIDIA RTX 5080 Ti Founders",
+              "type": "Triple-GPU",
+              "url": "https://newegg.com/example-gpu",
+              "selector": ".priceView-hero-price span",
+              "current_price": 1948.75,
+              "change_24h": 3.48,
+              "sentiment": "hold",
+              "stock_status": "Low Stock",
+              "history": [
+                { "date": "2025-11-20", "price": 1850.0 },
+                { "date": "2025-11-21", "price": 1840.0 },
+                { "date": "2025-11-22", "price": 1820.0 },
+                { "date": "2025-11-23", "price": 1810.0 },
+                { "date": "2025-11-24", "price": 1984.71 },
+                { "date": "2025-11-25", "price": 1948.75 }
+              ]
+            },
+            {
+              "id": "cpu-001",
+              "name": "Intel Core i11-14900K",
+              "type": "CPU",
+              "url": "https://bestbuy.com/example-cpu",
+              "selector": ".price-value",
+              "current_price": 612.33,
+              "change_24h": -8.11,
+              "sentiment": "buy",
+              "stock_status": "In Stock",
+              "history": [
+                { "date": "2025-11-20", "price": 680.0 },
+                { "date": "2025-11-21", "price": 675.0 },
+                { "date": "2025-11-22", "price": 660.0 },
+                { "date": "2025-11-23", "price": 650.0 },
+                { "date": "2025-11-24", "price": 666.22 },
+                { "date": "2025-11-25", "price": 612.33 }
+              ]
+            }
+          ]
+        };
+
+        // --- CHART COMPONENT ---
+        const PriceChart = ({ history }) => {
+            const data = history.map(item => ({
+                date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                price: item.price
+            })).slice(-7); // Show last 7 days
+
+            return (
+                <div className="h-64 w-full p-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={data} margin={{ top: 5, right: 0, left: -20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                            <XAxis dataKey="date" stroke="#9ca3af" tick={{ fontSize: 10 }} />
+                            <YAxis 
+                                stroke="#9ca3af" 
+                                tick={{ fontSize: 10 }} 
+                                domain={['auto', 'auto']}
+                                tickFormatter={(value) => `$${Math.round(value)}`}
                             />
-                          </div>
+                            <Tooltip 
+                                contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #4b5563', borderRadius: '4px' }}
+                                labelStyle={{ color: '#ffffff' }}
+                                formatter={(value) => [`$${value.toFixed(2)}`, 'Price']}
+                            />
+                            <Line 
+                                type="monotone" 
+                                dataKey="price" 
+                                stroke="#a78bfa" 
+                                strokeWidth={2} 
+                                dot={false} 
+                                activeDot={{ r: 6, fill: '#8b5cf6' }} 
+                            />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+            );
+        };
 
-                          <div className="text-right w-1/4">
-                            <div className="font-mono text-lg font-bold text-white">${product.current_price.toFixed(2)}</div>
-                            <div className={`text-xs font-bold flex items-center justify-end ${product.change_24h > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
-                              {product.change_24h > 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                              {Math.abs(product.change_24h).toFixed(2)}% (24h)
-                            </div>
-                          </div>
+        // --- PRODUCT CARD COMPONENT ---
+        const ProductCard = ({ product }) => {
+            const isNegative = product.change_24h < 0;
+            const changeColor = isNegative ? 'text-red-400' : 'text-green-400';
+            const arrowIcon = isNegative ? 'ArrowDown' : 'ArrowUp';
+            const sentimentClass = useMemo(() => {
+                switch (product.sentiment.toLowerCase()) {
+                    case 'panic': return 'bg-red-900/50 text-red-300';
+                    case 'buy': return 'bg-green-900/50 text-green-300';
+                    case 'hold': 
+                    default: return 'bg-yellow-900/50 text-yellow-300';
+                }
+            }, [product.sentiment]);
+            
+            const stockStatusClass = product.stock_status.includes('Low') || product.stock_status.includes('Out') ? 'text-red-400' : 'text-green-400';
 
-                          <div className="w-1/6 flex justify-end">
-                            <SentimentBadge sentiment={product.sentiment} />
-                          </div>
-
+            return (
+                <div className="bg-gray-800 rounded-xl shadow-2xl p-6 transition transform hover:scale-[1.01] duration-300 border border-gray-700">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <span className="text-xs font-medium text-indigo-400 uppercase tracking-widest">{product.type}</span>
+                            <h2 className="text-2xl font-bold mt-1 text-white">{product.name}</h2>
                         </div>
-                      ))}
+                        <span className={`text-sm font-semibold px-3 py-1 rounded-full ${sentimentClass} uppercase`}>
+                            {product.sentiment}
+                        </span>
                     </div>
-                  </div>
 
+                    <div className="mt-4 flex items-baseline">
+                        <p className="text-4xl font-extrabold text-indigo-300">
+                            ${product.current_price.toFixed(2)}
+                        </p>
+                        <span className={`ml-3 text-lg font-semibold flex items-center ${changeColor}`}>
+                            <LucideIcon name={arrowIcon} className="w-5 h-5 mr-1" />
+                            {Math.abs(product.change_24h).toFixed(2)}%
+                        </span>
+                    </div>
+
+                    <div className="mt-2 text-sm text-zinc-400">
+                        <span className="font-semibold">24h Change: </span>
+                        <span className={changeColor}>{product.change_24h > 0 ? '+' : ''}{product.change_24h.toFixed(2)}%</span>
+                        <span className="ml-4 font-semibold">Stock: </span>
+                        <span className={stockStatusClass}>{product.stock_status}</span>
+                    </div>
+
+                    {product.history && product.history.length > 0 && (
+                        <PriceChart history={product.history} />
+                    )}
+
+                    <a href={product.url} target="_blank" rel="noopener noreferrer" className="mt-4 block w-full text-center bg-indigo-600 text-white font-bold py-2 rounded-lg shadow-md hover:bg-indigo-500 transition duration-150">
+                        View Product Price
+                    </a>
                 </div>
+            );
+        };
 
-                {/* RIGHT SIDE: NEWS & INFO (Cols 9-12) */}
-                <div className="lg:col-span-4 space-y-8">
-                  
-                  {/* SUPPLY CHAIN WEATHER */}
-                  <div className="bg-zinc-900/80 border border-white/10 rounded-xl p-6">
-                    <h3 className="font-bold text-zinc-100 mb-4 flex items-center">
-                      <div className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
-                      Supply Chain Weather
-                    </h3>
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                        <div className="text-sm text-red-200 font-medium">DDR4 Production</div>
-                        <div className="text-xs font-bold bg-red-500 text-black px-2 py-1 rounded">CRITICAL</div>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-                        <div className="text-sm text-orange-200 font-medium">DDR5 Pricing</div>
-                        <div className="text-xs font-bold bg-orange-500 text-black px-2 py-1 rounded">VOLATILE</div>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                        <div className="text-sm text-emerald-200 font-medium">SSD Inventory</div>
-                        <div className="text-xs font-bold bg-emerald-500 text-black px-2 py-1 rounded">STABLE</div>
-                      </div>
+        // --- MAIN APPLICATION COMPONENT ---
+        const App = () => {
+            const { db, userId, isAuthReady } = useFirebaseAuth();
+            const { liveData, loading, error } = useFirestoreData(db, isAuthReady);
+
+            // Ticker items for the marquee
+            const tickerItems = useMemo(() => [
+                '⚠️ Warning: Global Silicon Shortage Expected to Last Through 2026.',
+                '📈 GPU spot prices up 3.48% in 24 hours.',
+                '📉 DRAM (32GB) down 4.76% - BUY signal active.',
+                '🔥 CPU Inventory Critical at Major Distributors.'
+            ], []);
+
+            const renderContent = () => {
+                if (!isAuthReady || loading) {
+                    return (
+                        <div className="text-center py-20">
+                            <LucideIcon name="Loader2" className="w-10 h-10 mx-auto animate-spin text-indigo-400" />
+                            <p className="mt-4 text-indigo-300">
+                                Authenticating and loading Silicon Market Data...
+                            </p>
+                            {/* Displaying UID for debugging/sharing as per instruction */}
+                            <p className="mt-2 text-xs text-zinc-600">
+                                User ID: {userId || 'Authenticating...'}
+                            </p>
+                        </div>
+                    );
+                }
+
+                if (error || !liveData || !liveData.products) {
+                    return (
+                        <div className="text-center py-20 bg-red-900/20 border border-red-700 rounded-xl m-8">
+                            <LucideIcon name="CloudOff" className="w-10 h-10 mx-auto text-red-400" />
+                            <p className="mt-4 text-red-300 font-semibold">
+                                Error: {error || "Data structure invalid or empty."}
+                            </p>
+                            <p className="text-sm text-red-400 mt-2">
+                                Displaying cached mock data. Check console for Firebase logs.
+                            </p>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        {liveData.products.map(product => (
+                            <ProductCard key={product.id} product={product} />
+                        ))}
                     </div>
-                    <div className="mt-4 text-xs text-zinc-500 leading-relaxed">
-                      Major manufacturers (Samsung, SK Hynix) have shifted ~30% of wafer capacity to HBM for AI servers, creating an artificial scarcity for consumer RAM.
+                );
+            };
+
+            return (
+                <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+                    
+                    {/* Header with Title and User ID */}
+                    <header className="py-6 border-b border-gray-700 mb-8">
+                        <div className="flex justify-between items-center">
+                            <h1 className="text-4xl font-extrabold text-indigo-400 tracking-tight flex items-center">
+                                <LucideIcon name="Target" className="w-8 h-8 mr-3" />
+                                SILICONMETER
+                            </h1>
+                            <div className="text-right text-sm">
+                                <p className="text-zinc-400">Authenticated User</p>
+                                {/* Mandatory display of full userId */}
+                                <p className="text-xs text-zinc-500 break-all">{userId || 'N/A'}</p>
+                            </div>
+                        </div>
+                        <p className="text-zinc-400 mt-2 text-lg">
+                            Real-time tracking and sentiment analysis for critical PC components.
+                        </p>
+                    </header>
+
+                    {/* LIVE TICKER MARQUEE */}
+                    <div className="bg-gray-800 p-3 rounded-lg shadow-xl overflow-hidden mb-8 border border-gray-700">
+                        <div className="flex space-x-8 animate-marquee whitespace-nowrap">
+                            {/* Duplicate content to create seamless loop */}
+                            {[...tickerItems, ...tickerItems].map((item, index) => (
+                                <span key={index} className="text-sm font-mono text-yellow-400 uppercase tracking-wider">
+                                    {item}
+                                </span>
+                            ))}
+                        </div>
                     </div>
-                  </div>
 
-                  {/* NEWS FEED */}
-                  <div>
-                     <h3 className="font-bold text-zinc-400 text-xs uppercase tracking-wider mb-4">Latest Intelligence</h3>
-                     <div className="space-y-3">
-                       {newsItems.map((news) => (
-                         <div key={news.id} className="group cursor-pointer block">
-                           <div className="flex items-start justify-between">
-                              <h4 className="text-sm font-medium text-zinc-300 group-hover:text-indigo-400 transition leading-snug mb-1">
-                                {news.title}
-                              </h4>
-                              <ExternalLink size={12} className="text-zinc-600 opacity-0 group-hover:opacity-100 transition mt-1 ml-2 flex-shrink-0" />
-                           </div>
-                           <div className="flex items-center space-x-2 mt-1">
-                             <span className={`w-1.5 h-1.5 rounded-full ${news.sentiment === 'negative' ? 'bg-red-500' : news.sentiment === 'positive' ? 'bg-emerald-500' : 'bg-zinc-500'}`}></span>
-                             <span className="text-[10px] text-zinc-500 uppercase font-bold">{news.source}</span>
-                             <span className="text-[10px] text-zinc-600">• {news.time}</span>
-                           </div>
-                         </div>
-                       ))}
-                     </div>
-                  </div>
+                    {/* MAIN CONTENT GRID */}
+                    {renderContent()}
 
-                  {/* SOCIAL PROOF / COMMUNITY */}
-                  <div className="bg-indigo-600 rounded-xl p-6 text-center relative overflow-hidden">
-                     <div className="relative z-10">
-                       <div className="text-4xl font-black text-white mb-1">2,401</div>
-                       <div className="text-indigo-200 text-xs font-medium uppercase tracking-wide mb-4">PC Builders Online</div>
-                       <p className="text-sm text-indigo-100 mb-4">
-                         Don't overpay. Join the alert list to get notified when prices dip below MSRP.
-                       </p>
-                       <button className="w-full bg-white text-indigo-600 font-bold py-2 rounded shadow hover:bg-indigo-50 transition">
-                         Join Discord
-                       </button>
-                     </div>
-                     {/* Abstract BG decoration */}
-                     <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-400 rounded-full blur-3xl opacity-20 -mr-10 -mt-10"></div>
-                  </div>
+                    {/* CALL TO ACTION / INFORMATION SECTION */}
+                    <div className="mt-12 p-8 bg-indigo-900/30 rounded-2xl shadow-inner border border-indigo-800">
+                        <div className="flex flex-col lg:flex-row justify-between items-center">
+                            <div className="mb-6 lg:mb-0 lg:w-3/4">
+                                <h3 className="text-3xl font-bold text-indigo-200">
+                                    Understand the Market Sentiment
+                                </h3>
+                                <p className="text-indigo-300 mt-2">
+                                    Our proprietary **PANIC** (Sell), **BUY** (Acquire), and **HOLD** (Wait) algorithm is based on 7-day moving averages. Don't pay peak prices!
+                                </p>
+                            </div>
+                            <div className="flex-shrink-0">
+                                <button className="flex items-center bg-indigo-600 font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-indigo-500 transition text-white">
+                                    <LucideIcon name="MessageCircle" className="w-5 h-5 mr-2" />
+                                    Join Discussion
+                                </button>
+                            </div>
+                        </div>
+                    </div>
 
+                    {/* FOOTER */}
+                    <footer className="border-t border-white/10 mt-12 py-8 text-center text-zinc-600 text-sm">
+                        <p>Data aggregated from Global Spot Markets and Retail APIs. Displaying Firestore data or Mock data.</p>
+                        <p className="mt-2">Last updated: {liveData?.last_updated ? new Date(liveData.last_updated).toLocaleString() : 'N/A'}</p>
+                        <p className="mt-2">Built with ❤️ for the Canvas Environment.</p>
+                    </footer>
+                    
+                    {/* CSS for Ticker Animation */}
+                    <style>{`
+                        .animate-marquee {
+                            animation: marquee 30s linear infinite;
+                        }
+                        @keyframes marquee {
+                            0% { transform: translateX(0); }
+                            100% { transform: translateX(-50%); }
+                        }
+                    `}</style>
                 </div>
-              </div>
-
-              {/* FOOTER */}
-              <footer className="border-t border-white/10 mt-12 py-8 text-center text-zinc-600 text-sm">
-                <p>Data aggregated from Global Spot Markets, Retail APIs, and User Reports.</p>
-                <p className="mt-2">Last updated: {liveData?.last_updated ? new Date(liveData.last_updated).toLocaleString() : 'N/A'}</p>
-                <p className="mt-2">Built with ❤️ during the Great Silicon Shortage of 2025.</p>
-              </footer>
-            </div>
-          );
+            );
         };
 
         // Render the application to the root element
