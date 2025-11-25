@@ -4,300 +4,215 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SILICONMETER - Real-time Price Tracker</title>
-    <!-- Load Tailwind CSS -->
+    
+    <!-- 1. Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Load React and ReactDOM -->
+    
+    <!-- 2. Load React and ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Load Babel for JSX compilation -->
+    
+    <!-- 3. Load Babel (to compile React in browser) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Load Recharts with Cache Busting (?v=3) to ensure you get the working version -->
-    <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.0/umd/Recharts.min.js?v=3"></script> 
+    <!-- 4. Load Chart.js (The Robust Alternative to Recharts) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- 5. Load Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 4px; }
-        ::-webkit-scrollbar-track { background-color: #1f2937; }
+        body { background-color: #0a0a0a; color: white; font-family: sans-serif; }
         .animate-marquee { animation: marquee 30s linear infinite; }
-        @keyframes marquee {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
+        @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
     </style>
 </head>
-<body class="bg-[#0a0a0a] text-white">
+<body>
 
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useCallback, Fragment } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
+        const { createRoot } = ReactDOM;
 
-        // --- SAFETY CHECK ---
-        // If Recharts failed to load, show a clear error immediately.
-        if (typeof Recharts === 'undefined') {
-            document.getElementById('root').innerHTML = `
-                <div style="height:100vh; display:flex; align-items:center; justify-content:center; color:#ef4444; text-align:center;">
-                    <div>
-                        <h1 style="font-size:24px; font-weight:bold;">External Library Error</h1>
-                        <p>Recharts failed to load. Please perform a Hard Refresh (Ctrl + Shift + R).</p>
-                    </div>
-                </div>
-            `;
-            throw new Error("Recharts lib missing");
-        }
+        // --- 1. CONFIGURATION ---
+        // Using "./data.json" works for both Localhost and GitHub Pages automatically.
+        const DATA_URL = './data.json';
 
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, ResponsiveContainer, AreaChart, Area } = Recharts;
-
-        // --- CONFIGURATION ---
-        const GITHUB_PAGES_BASE_PATH = '/SILICONMETER/'; 
-        const isLocal = window.location.hostname === 'localhost';
-        const DATA_URL = isLocal ? './data.json' : window.location.origin + GITHUB_PAGES_BASE_PATH + 'data.json';
-
-        // --- INLINE ICONS (No external dependency to fail) ---
+        // --- 2. SIMPLE ICON COMPONENTS ---
         const Icons = {
+            Cpu: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><path d="M9 2v2"/><path d="M9 20v2"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 9h2"/><path d="M2 15h2"/><path d="M20 9h2"/><path d="M20 15h2"/></svg>,
+            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
             ArrowUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>,
             ArrowDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>,
-            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
-            Cpu: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>,
-            AlertTriangle: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>,
-            TrendingUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>,
-            Loader: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
             WifiOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M8.5 8.5A6 6 0 0 1 12 8c.76 0 1.5.15 2.2.43"/><path d="M5.23 5.23A10 10 0 0 1 12 5c1.76 0 3.4.45 4.86 1.24"/><path d="M2 2 22 22"/><path d="M12 20h.01"/><path d="M16.24 16.24A6 6 0 0 1 12 17a6 6 0 0 1-4.24-1.76"/></svg>
         };
 
-        // --- COMPONENTS ---
-
-        const TickerItem = ({ symbol, price, change }) => (
-          <div className="flex items-center space-x-2 px-6 border-r border-white/10 text-sm font-mono shrink-0">
-            <span className="font-bold text-white">{symbol}</span>
-            <span className="text-zinc-400">${price.toFixed(2)}</span>
-            <span className={`${change > 0 ? 'text-red-400' : 'text-emerald-400'} flex items-center`}>
-              {change > 0 ? <span className="mr-1">▲</span> : <span className="mr-1">▼</span>} 
-              {Math.abs(change).toFixed(2)}%
-            </span>
-          </div>
-        );
-
+        // --- 3. ROBUST CHART COMPONENT (Chart.js) ---
         const Sparkline = ({ data, color }) => {
-          const sparklineData = Array.isArray(data) ? data.slice(-5) : [];
-          if (sparklineData.length === 0) return <div className="h-12 w-24 flex items-center justify-center text-xs text-zinc-500">No History</div>;
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
 
-          return (
-            <div className="h-12 w-24">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={sparklineData}>
-                  <Line type="monotone" dataKey="price" stroke={color} strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          );
-        };
+            useEffect(() => {
+                if (!canvasRef.current) return;
+                
+                // Destroy previous chart instance if it exists
+                if (chartRef.current) {
+                    chartRef.current.destroy();
+                }
 
-        const SentimentBadge = ({ sentiment }) => {
-          const s = sentiment?.toLowerCase();
-          let color = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-          let Icon = Icons.TrendingUp;
-          let text = 'HOLD';
+                const ctx = canvasRef.current.getContext('2d');
+                
+                // Safe data handling
+                const safeData = Array.isArray(data) ? data : [];
+                const prices = safeData.map(d => d.price);
+                const labels = safeData.map(d => d.date);
 
-          if (s === 'panic') { color = 'bg-red-500/20 text-red-400 border-red-500/30'; Icon = Icons.AlertTriangle; text = 'PANIC BUY'; }
-          if (s === 'buy') { color = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'; Icon = Icons.Zap; text = 'GOOD PRICE'; }
-
-          return (
-            <div className={`flex items-center space-x-1 px-2 py-1 rounded text-xs font-bold border ${color}`}>
-              <Icon /><span>{text}</span>
-            </div>
-          );
-        };
-
-        const transformDataForGraph = (products) => {
-          if (!products || products.length === 0) return [];
-          const dateMap = new Map();
-
-          products.forEach(product => {
-            if (Array.isArray(product.history)) {
-                product.history.forEach(entry => {
-                  const date = entry.date;
-                  if (!dateMap.has(date)) dateMap.set(date, { name: date, ddr5: 0, ddr4: 0, countDDR5: 0, countDDR4: 0, hbm: 0, countHBM: 0 });
-                  const dayData = dateMap.get(date);
-                  if (product.type.includes('DDR5')) { dayData.ddr5 += entry.price; dayData.countDDR5 += 1; }
-                  else if (product.type.includes('DDR4')) { dayData.ddr4 += entry.price; dayData.countDDR4 += 1; }
-                  if (product.name.includes('HBM')) { dayData.hbm += entry.price; dayData.countHBM += 1; }
+                // Create new Chart
+                chartRef.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: prices,
+                            borderColor: color,
+                            borderWidth: 2,
+                            tension: 0.4, // Smooth curves
+                            pointRadius: 0, // Hide points
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                        scales: { x: { display: false }, y: { display: false } },
+                        animation: false // Disable animation for performance
+                    }
                 });
-            }
-          });
 
-          return Array.from(dateMap.values())
-            .map(d => ({
-              name: d.name.substring(5),
-              ddr5: d.countDDR5 ? d.ddr5/d.countDDR5 : null,
-              ddr4: d.countDDR4 ? d.ddr4/d.countDDR4 : null,
-              hbm: d.countHBM ? d.hbm/d.countHBM : null,
-            }))
-            .sort((a, b) => new Date(a.name) - new Date(b.name));
-        };
+                return () => {
+                    if (chartRef.current) chartRef.current.destroy();
+                };
+            }, [data, color]);
 
-        // --- MAIN APP ---
-        const App = () => {
-          const [liveData, setLiveData] = useState(null);
-          const [loading, setLoading] = useState(true);
-          const [filter, setFilter] = useState('ALL');
-          const [error, setError] = useState(null);
-          
-          const fetchData = useCallback(async () => {
-            try {
-              setLoading(true);
-              setError(null);
-              const response = await fetch(DATA_URL);
-              if (!response.ok) throw new Error(`HTTP ${response.status}`);
-              const data = await response.json();
-              setLiveData(data);
-            } catch (e) {
-              console.error("Fetch error:", e);
-              setError(`Failed to load data.json from ${DATA_URL}`);
-            } finally {
-              setLoading(false);
-            }
-          }, []);
-
-          useEffect(() => {
-            fetchData();
-            const interval = setInterval(fetchData, 300000);
-            return () => clearInterval(interval);
-          }, [fetchData]);
-
-          const products = liveData?.products || [];
-          const marketData = useMemo(() => transformDataForGraph(products), [products]);
-          const filteredProducts = useMemo(() => filter === 'ALL' ? products : products.filter(p => p.type.toUpperCase() === filter), [filter, products]);
-
-          const tickerItems = useMemo(() => {
-            const d5 = products.find(p => p.type === 'DDR5');
-            const d4 = products.find(p => p.type === 'DDR4'); 
-            const gpu = products.find(p => p.type === 'GPU');
-            return [
-              d5 && { symbol: "DDR5 AVG", price: d5.current_price, change: d5.change_24h },
-              d4 && { symbol: "DDR4 AVG", price: d4.current_price, change: d4.change_24h },
-              gpu && { symbol: "GPU 4090", price: gpu.current_price, change: gpu.change_24h },
-            ].filter(Boolean);
-          }, [products]);
-
-          if (loading && !liveData && !error) {
-            return <div className="min-h-screen flex items-center justify-center text-zinc-400"><Icons.Loader /><span className="ml-2">Loading market data...</span></div>;
-          }
-
-          if (error || (products.length === 0 && !loading)) {
             return (
-              <div className="min-h-screen flex items-center justify-center p-8">
-                  <div className="bg-red-900/50 border border-red-700 p-8 rounded-xl text-center">
-                    <div className="mx-auto text-red-400 mb-4 flex justify-center"><Icons.WifiOff /></div>
-                    <h2 className="text-xl font-bold text-white">Data Load Error</h2>
-                    <p className="text-red-200 text-sm mt-2">{error || "Data file is empty."}</p>
-                    <button onClick={fetchData} className="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-500">Retry</button>
-                  </div>
-              </div>
+                <div className="h-12 w-24">
+                    <canvas ref={canvasRef}></canvas>
+                </div>
             );
-          }
-
-          return (
-            <div className="min-h-screen text-zinc-200">
-              <div className="sticky top-0 z-50 bg-[#0a0a0a]/90 backdrop-blur border-b border-white/10 overflow-hidden h-10 flex items-center">
-                <div className="animate-marquee flex whitespace-nowrap">
-                  {[...Array(3)].map((_, i) => (
-                     <Fragment key={i}>
-                        {tickerItems.map((item, idx) => <TickerItem key={idx} {...item} />)}
-                        <TickerItem symbol="NAND" price={0.12} change={5.4} />
-                     </Fragment>
-                  ))}
-                </div>
-              </div>
-
-              <div className="max-w-7xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-8 space-y-8">
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <h1 className="text-4xl font-black text-white">SILICON<span className="text-indigo-500">METER</span></h1>
-                      <p className="text-zinc-400 font-medium">Global Memory Crisis Tracker</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6 relative overflow-hidden">
-                    <div className="h-[300px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={marketData}>
-                          <defs>
-                            <linearGradient id="colorDdr5" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                          <XAxis dataKey="name" />
-                          <YAxis stroke="#555" domain={['auto', 'auto']} />
-                          <RechartsTooltip contentStyle={{ backgroundColor: '#000', borderColor: '#333' }} />
-                          <Area type="monotone" dataKey="ddr5" stroke="#6366f1" fill="url(#colorDdr5)" strokeWidth={3} />
-                          <Area type="monotone" dataKey="ddr4" stroke="#ec4899" fill="none" strokeWidth={2} strokeDasharray="5 5" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-xl text-white">Market Movers</h3>
-                      <div className="flex bg-zinc-900 rounded-lg p-1 border border-white/10">
-                        {['ALL', 'DDR5', 'DDR4', 'GPU'].map(f => (
-                          <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 rounded text-xs font-bold ${filter === f ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>{f}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4">
-                      {filteredProducts.map((product) => (
-                        <div key={product.id} className="bg-zinc-900/30 border border-white/5 hover:border-white/20 rounded-xl p-4 flex items-center justify-between transition-all hover:bg-zinc-800/30">
-                          <div className="flex items-center space-x-4 w-1/3">
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${product.type === 'GPU' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                              {product.type === 'GPU' ? <Icons.Cpu /> : <Icons.Zap />}
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-white text-sm truncate pr-4">{product.name}</h4>
-                              <div className="flex items-center space-x-2 mt-1">
-                                <span className="text-xs px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400 border border-white/5">{product.type}</span>
-                                <span className={`text-xs font-mono ${product.stock_status.includes('Out') ? 'text-red-400' : 'text-emerald-400'}`}>{product.stock_status}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="hidden md:block w-1/4">
-                            <Sparkline data={product.history} color={product.change_24h > 0 ? '#ef4444' : '#10b981'} />
-                          </div>
-                          <div className="text-right w-1/4">
-                            <div className="font-mono text-lg font-bold text-white">${product.current_price.toFixed(2)}</div>
-                            <div className={`text-xs font-bold flex items-center justify-end ${product.change_24h > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
-                              {product.change_24h > 0 ? <Icons.ArrowUp /> : <Icons.ArrowDown />}
-                              {Math.abs(product.change_24h).toFixed(2)}%
-                            </div>
-                          </div>
-                          <div className="w-1/6 flex justify-end"><SentimentBadge sentiment={product.sentiment} /></div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="lg:col-span-4 space-y-8">
-                  <div className="bg-zinc-900/80 border border-white/10 rounded-xl p-6">
-                    <h3 className="font-bold text-zinc-100 mb-4 flex items-center">
-                      <span className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></span>
-                      Supply Chain Weather
-                    </h3>
-                    <div className="text-sm text-zinc-400">Major outages in DDR4 fabs reported.</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
         };
 
-        ReactDOM.render(<App />, document.getElementById('root'));
+        // --- 4. MAIN APP ---
+        const App = () => {
+            const [liveData, setLiveData] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+
+            const fetchData = async () => {
+                try {
+                    setLoading(true);
+                    setError(null);
+                    console.log("Fetching data from:", DATA_URL);
+                    const response = await fetch(DATA_URL);
+                    
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    
+                    const jsonData = await response.json();
+                    console.log("Data received:", jsonData);
+                    setLiveData(jsonData);
+                } catch (err) {
+                    console.error("Fetch failed:", err);
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                fetchData();
+            }, []);
+
+            // --- RENDER STATES ---
+            if (loading) return <div className="min-h-screen flex items-center justify-center">Loading Market Data...</div>;
+            
+            if (error || !liveData) return (
+                <div className="min-h-screen flex flex-col items-center justify-center text-red-400 p-4 text-center">
+                    <Icons.WifiOff />
+                    <h2 className="text-xl font-bold mt-4">Data Fetch Error</h2>
+                    <p className="text-sm mt-2 text-zinc-500">{error || "Unknown Error"}</p>
+                    <p className="text-xs mt-2 font-mono bg-zinc-900 p-2 rounded">Trying to load: {DATA_URL}</p>
+                    <button onClick={fetchData} className="mt-6 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500">Retry</button>
+                </div>
+            );
+
+            // --- MAIN UI ---
+            const products = liveData.products || [];
+            
+            return (
+                <div className="min-h-screen pb-12">
+                    {/* TICKER */}
+                    <div className="sticky top-0 z-50 bg-black/80 border-b border-white/10 overflow-hidden h-10 flex items-center backdrop-blur-md">
+                        <div className="animate-marquee flex whitespace-nowrap font-mono text-sm">
+                            {products.map((p, i) => (
+                                <div key={i} className="mx-4 flex items-center">
+                                    <span className="font-bold text-white mr-2">{p.name.split(' ').slice(0,2).join(' ')}</span>
+                                    <span className="text-zinc-400 mr-2">${p.current_price.toFixed(2)}</span>
+                                    <span className={p.change_24h >= 0 ? "text-red-400" : "text-green-400"}>
+                                        {p.change_24h > 0 ? '▲' : '▼'} {Math.abs(p.change_24h)}%
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* HEADER */}
+                    <div className="max-w-6xl mx-auto mt-12 px-4">
+                        <h1 className="text-5xl font-black tracking-tighter">SILICON<span className="text-indigo-500">METER</span></h1>
+                        <p className="text-zinc-400 mt-2 text-lg">Global Hardware Price Tracker</p>
+                    </div>
+
+                    {/* GRID */}
+                    <div className="max-w-6xl mx-auto mt-12 px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {products.map((p) => (
+                            <div key={p.id} className="bg-zinc-900/50 border border-white/10 p-6 rounded-xl hover:border-indigo-500/50 transition">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="bg-zinc-800 p-2 rounded-lg text-indigo-400">
+                                        {p.type === 'GPU' ? <Icons.Cpu /> : <Icons.Zap />}
+                                    </div>
+                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                                        p.sentiment === 'panic' ? 'bg-red-500/20 text-red-400' : 
+                                        p.sentiment === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                                    }`}>
+                                        {p.sentiment}
+                                    </span>
+                                </div>
+                                
+                                <h3 className="font-bold text-lg truncate">{p.name}</h3>
+                                <div className="flex items-center justify-between mt-4">
+                                    <div>
+                                        <div className="text-3xl font-black font-mono">${p.current_price.toFixed(2)}</div>
+                                        <div className={`text-xs font-bold mt-1 flex items-center ${p.change_24h >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                            {p.change_24h > 0 ? <Icons.ArrowUp /> : <Icons.ArrowDown />} 
+                                            {Math.abs(p.change_24h)}% (24h)
+                                        </div>
+                                    </div>
+                                    {/* CHART.JS SPARKLINE */}
+                                    <Sparkline data={p.history} color={p.change_24h >= 0 ? '#ef4444' : '#10b981'} />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    
+                    <div className="text-center mt-12 text-zinc-600 text-xs">
+                        Last Updated: {new Date(liveData.last_updated).toLocaleString()}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
