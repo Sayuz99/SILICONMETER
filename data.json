@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-18T01:27:07.246203",
+  "last_updated": "2026-04-18T06:57:15.761146",
   "products": [
     {
       "id": "dram-001",
@@ -7,8 +7,8 @@
       "type": "DDR5",
       "url": "https://amazon.com/example-product-link",
       "selector": "#corePriceDisplay_desktop_feature_div .a-price-whole",
-      "current_price": 160789853.06,
-      "change_24h": 0.55,
+      "current_price": 156265214.59,
+      "change_24h": -2.81,
       "sentiment": "panic",
       "stock_status": "In Stock",
       "history": [
@@ -610,7 +610,7 @@
         },
         {
           "date": "2026-04-18",
-          "price": 160789853.06
+          "price": 156265214.59
         }
       ]
     },
@@ -620,8 +620,8 @@
       "type": "GPU",
       "url": "https://bestbuy.com/example-gpu",
       "selector": ".priceView-hero-price span",
-      "current_price": 2009130063.78,
-      "change_24h": 4.26,
+      "current_price": 2208324099.54,
+      "change_24h": 9.91,
       "sentiment": "panic",
       "stock_status": "Low Stock",
       "history": [
@@ -1223,7 +1223,7 @@
         },
         {
           "date": "2026-04-18",
-          "price": 2009130063.78
+          "price": 2208324099.54
         }
       ]
     },
@@ -1233,8 +1233,8 @@
       "type": "DDR5",
       "url": "https://newegg.com/example-ram",
       "selector": ".price-current strong",
-      "current_price": 291354613.86,
-      "change_24h": -4.19,
+      "current_price": 278206829.99,
+      "change_24h": -4.51,
       "sentiment": "panic",
       "stock_status": "Out of Stock",
       "history": [
@@ -1836,7 +1836,7 @@
         },
         {
           "date": "2026-04-18",
-          "price": 291354613.86
+          "price": 278206829.99
         }
       ]
     }
