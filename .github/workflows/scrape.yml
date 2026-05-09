@@ -39,4 +39,5 @@ jobs:
           git add data.json
           timestamp=$(date -u)
           git commit -m "Latest data: ${timestamp}" || exit 0
+          git pull --rebase origin main
           git push
