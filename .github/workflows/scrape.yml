@@ -5,41 +5,46 @@ on:
     branches:
       - main
   schedule:
-    - cron: '0 */6 * * *' # Runs every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
-  workflow_dispatch:      # Allows you to click "Run Now" manually for testing
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Fix: opt into Node 24 before June 2nd deadline
 
 permissions:
-  contents: write         # Critical: Allows the bot to write back to the repo
+  contents: write
 
 jobs:
   scrape-and-report:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2         # Fix: pinned patch version with Node 24 support
         with:
           fetch-depth: 0
-        
+
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.5.0     # Fix: pinned patch version with Node 24 support
         with:
           python-version: '3.10'
           cache: 'pip'
-          
+
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          
+        run: pip install -r requirements.txt
+
       - name: Run the Scraper
         run: python scraper.py
-        
+
       - name: Commit and Push if changed
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # Fix: expose token to this step
         run: |
           git config user.name "SiliconMeter Bot"
           git config user.email "actions@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
           git pull --rebase origin main
           git add data.json
           timestamp=$(date -u)
           git commit -m "Latest data: ${timestamp}" || true
-          git push
+          git push origin main                # Fix: explicit remote + branch, not bare "git push"
