@@ -43,7 +43,7 @@ jobs:
           git config user.name "SiliconMeter Bot"
           git config user.email "actions@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
-          git pull --rebase origin main
+          git pull --rebase --autostash origin main
           git add data.json
           timestamp=$(date -u)
           git commit -m "Latest data: ${timestamp}" || true
