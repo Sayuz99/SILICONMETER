@@ -54,8 +54,10 @@ def get_real_price(url, selector):
 
 def get_simulated_price(last_price):
     """
-    DEMO MODE:
-    Simulates a volatile market where DRAM prices are generally trending up.
+    DEMO MODE (DISABLED):
+    Simulates a volatile market. DO NOT USE IN PRODUCTION — prices compound
+    into billions over time due to the positive bias (+10% max vs -5% min).
+    Only re-enable this for local testing with a fresh data.json.
     """
     volatility = random.uniform(-0.05, 0.10) # Trend slightly positive (-5% to +10%)
     new_price = last_price * (1 + volatility)
@@ -86,39 +88,41 @@ def main():
     for product in db['products']:
         print(f"Processing: {product['name']}...")
         
-        # 1. GET PRICE
-        # TOGGLE THIS: Use get_real_price() for production, get_simulated_price() for testing
-        # current_price = get_real_price(product['url'], product['selector'])
-        
-        # For this demo, we use the simulation based on the last recorded price
-        last_recorded_price = product['history'][-1]['price'] if product['history'] else 100
-        current_price = get_simulated_price(last_recorded_price)
-        
-        if current_price:
-            # 2. CALCULATE SENTIMENT
-            sentiment = calculate_sentiment(current_price, product['history'])
-            
-            # 3. UPDATE PRODUCT
-            product['current_price'] = current_price
-            product['change_24h'] = round(((current_price - last_recorded_price) / last_recorded_price) * 100, 2)
-            product['sentiment'] = sentiment
-            
-            # 4. APPEND HISTORY (Idempotent: don't add duplicate entry for same day)
-            if not product['history'] or product['history'][-1]['date'] != today:
-                product['history'].append({
-                    "date": today,
-                    "price": current_price
-                })
-                # Keep history manageable (e.g., last 365 days)
-                if len(product['history']) > 365:
-                    product['history'].pop(0)
-            else:
-                # Update today's existing entry
-                product['history'][-1]['price'] = current_price
+        # 1. GET PRICE — REAL SCRAPING MODE (active)
+        current_price = get_real_price(product['url'], product['selector'])
 
-            print(f"  -> Price: ${current_price} | Sentiment: {sentiment.upper()}")
+        # SIMULATION MODE (disabled — causes prices to compound into billions)
+        # last_recorded_price = product['history'][-1]['price'] if product['history'] else 100
+        # current_price = get_simulated_price(last_recorded_price)
+        
+        if current_price is None:
+            print(f"  -> Skipping {product['name']}, could not fetch price. Check URL and selector.")
+            continue
+
+        last_recorded_price = product['history'][-1]['price'] if product['history'] else current_price
+
+        # 2. CALCULATE SENTIMENT
+        sentiment = calculate_sentiment(current_price, product['history'])
+        
+        # 3. UPDATE PRODUCT
+        product['current_price'] = current_price
+        product['change_24h'] = round(((current_price - last_recorded_price) / last_recorded_price) * 100, 2)
+        product['sentiment'] = sentiment
+        
+        # 4. APPEND HISTORY (Idempotent: don't add duplicate entry for same day)
+        if not product['history'] or product['history'][-1]['date'] != today:
+            product['history'].append({
+                "date": today,
+                "price": current_price
+            })
+            # Keep history manageable (e.g., last 365 days)
+            if len(product['history']) > 365:
+                product['history'].pop(0)
         else:
-            print("  -> Failed to fetch price.")
+            # Update today's existing entry
+            product['history'][-1]['price'] = current_price
+
+        print(f"  -> Price: ${current_price} | Sentiment: {sentiment.upper()}")
 
     save_data(db)
     print("--- Scrape Complete ---")
